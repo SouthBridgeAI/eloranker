@@ -8,6 +8,7 @@ A flexible and efficient TypeScript library for ranking items based on pairwise 
 - Configurable ranking parameters
 - Automatic calculation of next best comparison
 - Progress tracking for ranking stability
+- Comprehensive item statistics and history
 - TypeScript support with full type definitions
 
 ## Installation
@@ -18,15 +19,15 @@ Install Ranker using npm:
 npm install ranker
 ```
 
-Or using bun:
+Or using yarn:
 
 ```bash
-bun add ranker
+yarn add ranker
 ```
 
-## Usage
+## Quick Start
 
-Here's a quick example of how to use Ranker:
+Here's a basic example to get you started with Ranker:
 
 ```typescript
 import { Ranker, RankableItem, ComparisonResult } from "ranker";
@@ -50,20 +51,81 @@ const result: ComparisonResult = {
 
 ranker.addComparisonResult(result);
 
-// Get the next comparison
-const nextComparison = ranker.getNextComparison();
-
 // Get current rankings
 const rankings = ranker.getRankings();
-
 console.log("Current rankings:", rankings);
+```
+
+## Usage Guide
+
+### Initializing the Ranker
+
+Create a new Ranker instance with initial items and optional configuration:
+
+```typescript
+const ranker = new Ranker(initialItems, {
+  kFactor: 32,
+  minimumComparisons: 20,
+  defaultInitialRating: 1500,
+  minRating: 0,
+});
+```
+
+### Adding and Removing Items
+
+```typescript
+ranker.addItem("newItem", 1400); // Add with custom initial rating
+ranker.addItem("anotherItem"); // Add with default initial rating
+ranker.removeItem("itemToRemove");
+```
+
+### Adding Comparison Results
+
+```typescript
+const result: ComparisonResult = {
+  itemId1: "item1",
+  itemId2: "item2",
+  result: "win", // "win", "loss", or "tie"
+  timestamp: Date.now(),
+};
+ranker.addComparisonResult(result);
+```
+
+### Getting Next Comparison
+
+```typescript
+const nextComparison = ranker.getNextComparison();
+if (nextComparison) {
+  const [itemId1, itemId2] = nextComparison;
+  console.log(`Next comparison: ${itemId1} vs ${itemId2}`);
+} else {
+  console.log("No more comparisons needed");
+}
+```
+
+### Retrieving Rankings and Item Stats
+
+```typescript
+const rankings = ranker.getRankings();
+console.log("Current rankings:", rankings);
+
+const itemStats = ranker.getItemStats("item1");
+console.log("Stats for item1:", itemStats);
+```
+
+### Tracking Progress
+
+```typescript
+const progress = ranker.getProgress({
+  ratingChangeThreshold: 5,
+  stableComparisonsThreshold: 10,
+});
+console.log(`Ranking progress: ${progress * 100}%`);
 ```
 
 ## API Reference
 
 ### `Ranker`
-
-The main class for managing the ranking system.
 
 #### Constructor
 
@@ -71,44 +133,25 @@ The main class for managing the ranking system.
 constructor(initialItems: RankableItem[], config: Partial<RankerConfig>)
 ```
 
-- `initialItems`: An array of initial items to be ranked.
-- `config`: Configuration options for the ranker.
-
 #### Methods
 
 - `addItem(id: string, initialRating?: number): void`
-  Adds a new item to the ranking system.
-
 - `removeItem(id: string): void`
-  Removes an item from the ranking system.
-
 - `addComparisonResult(result: ComparisonResult): void`
-  Adds a comparison result and updates the ratings of the compared items.
-
 - `getNextComparison(): [string, string] | null`
-  Determines the next best comparison to make.
-
 - `getItemStats(id: string): RankableItem`
-  Retrieves the statistics for a specific item.
-
 - `getRankings(): RankableItem[]`
-  Retrieves all items sorted by their current rating in descending order.
-
 - `getItemCount(): number`
-  Gets the total number of items in the ranking system.
-
 - `getAllItems(): RankableItem[]`
-  Retrieves all items in the ranking system.
-
-- `getProgress(): number`
-  Calculates the progress of the ranking system.
+- `getProgress(params: ProgressParams): number`
+- `getItemHistory(id: string): Array<{ rating: number; timestamp: number }>`
 
 ### Types
 
 #### `RankableItem`
 
 ```typescript
-interface RankableItem {
+type RankableItem = {
   id: string;
   initialRating: number;
   currentRating: number;
@@ -116,46 +159,93 @@ interface RankableItem {
   wins: number;
   losses: number;
   ties: number;
-  stable: boolean;
   lastComparisonTime: number | null;
-}
+  ratingHistory: Array<{ rating: number; timestamp: number }>;
+};
 ```
 
 #### `ComparisonResult`
 
 ```typescript
-interface ComparisonResult {
+type ComparisonResult = {
   itemId1: string;
   itemId2: string;
   result: "win" | "loss" | "tie";
   timestamp: number;
-}
+  metadata?: any;
+};
 ```
 
 #### `RankerConfig`
 
 ```typescript
-interface RankerConfig {
+type RankerConfig = {
   kFactor: number;
-  ratingChangeThreshold: number;
-  stableComparisonsThreshold: number;
   minimumComparisons: number;
   defaultInitialRating: number;
   minRating: number;
+};
+```
+
+#### `ProgressParams`
+
+```typescript
+type ProgressParams = {
+  ratingChangeThreshold: number;
+  stableComparisonsThreshold: number;
+};
+```
+
+## Advanced Usage
+
+### Custom Configuration
+
+Customize the Ranker's behavior by passing a configuration object:
+
+```typescript
+const ranker = new Ranker(initialItems, {
+  kFactor: 24,
+  minimumComparisons: 30,
+  defaultInitialRating: 1600,
+  minRating: 100,
+});
+```
+
+### Tracking Item History
+
+Retrieve the rating history for a specific item:
+
+```typescript
+const history = ranker.getItemHistory("item1");
+console.log("Rating history for item1:", history);
+```
+
+### Handling Large Numbers of Items
+
+For systems with many items, you can implement batched processing:
+
+```typescript
+const allItems = ranker.getAllItems();
+const batchSize = 100;
+
+for (let i = 0; i < allItems.length; i += batchSize) {
+  const batch = allItems.slice(i, i + batchSize);
+  // Process batch...
 }
 ```
 
-## Configuration
+## Best Practices
 
-You can customize the behavior of the Ranker by passing a configuration object to the constructor. Here are the available options:
-
-- `kFactor`: Determines how much the ratings change after each comparison (default: 32)
-- `ratingChangeThreshold`: Minimum rating change required to update an item's rating (default: 5)
-- `stableComparisonsThreshold`: Number of comparisons required for an item to be considered stable (default: 10)
-- `minimumComparisons`: Minimum number of comparisons required for each item (default: 20)
-- `defaultInitialRating`: Default rating for new items (default: 1500)
-- `minRating`: Minimum allowed rating for any item (default: 0)
+1. **Regular Comparisons**: Ensure all items are compared regularly to maintain accurate rankings.
+2. **Balanced Comparisons**: Try to balance the number of comparisons across all items.
+3. **Monitor Progress**: Use the `getProgress` method to track the stability of your rankings.
+4. **Handle Ties**: Don't forget to use the "tie" result when appropriate to ensure accurate ratings.
+5. **Metadata Usage**: Utilize the `metadata` field in `ComparisonResult` to store additional information about each comparison.
 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
