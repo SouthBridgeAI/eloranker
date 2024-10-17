@@ -18,6 +18,7 @@ describe("EloRanker Class Tests", () => {
         losses: 0,
         ties: 0,
         stable: false,
+        lastComparisonTime: null,
       },
       {
         id: "item2",
@@ -28,6 +29,7 @@ describe("EloRanker Class Tests", () => {
         losses: 0,
         ties: 0,
         stable: false,
+        lastComparisonTime: null,
       },
       {
         id: "item3",
@@ -38,6 +40,7 @@ describe("EloRanker Class Tests", () => {
         losses: 0,
         ties: 0,
         stable: false,
+        lastComparisonTime: null,
       },
       {
         id: "item4",
@@ -48,6 +51,7 @@ describe("EloRanker Class Tests", () => {
         losses: 0,
         ties: 0,
         stable: false,
+        lastComparisonTime: null,
       },
     ];
 
@@ -179,11 +183,6 @@ describe("EloRanker Class Tests", () => {
 
     const rankings = ranker.getRankings();
 
-    console.log(
-      "Final ratings:",
-      rankings.map((item) => `${item.id}: ${item.currentRating}`)
-    );
-
     // Check if the rankings are in the correct order
     expect(rankings[0].currentRating).toBeGreaterThanOrEqual(
       rankings[1].currentRating
@@ -225,11 +224,6 @@ describe("EloRanker Class Tests", () => {
 
     const highRatedItemAfter = ranker.getItemStats("highRatedItem");
     const lowRatedItemAfter = ranker.getItemStats("lowRatedItem");
-
-    console.log("High rated item before:", highRatedItemBefore.currentRating);
-    console.log("High rated item after:", highRatedItemAfter.currentRating);
-    console.log("Low rated item before:", lowRatedItemBefore.currentRating);
-    console.log("Low rated item after:", lowRatedItemAfter.currentRating);
 
     expect(highRatedItemAfter.currentRating).toBeGreaterThan(
       highRatedItemBefore.currentRating
@@ -572,5 +566,169 @@ describe("EloRanker Class Tests", () => {
     expect(ranker.getItemCount()).toBe(1004); // 1000 new items + 4 initial items
     expect(() => ranker.getNextComparison()).not.toThrow();
     expect(ranker.getRankings().length).toBe(1004);
+  });
+});
+
+describe("getNextComparison Tests", () => {
+  let ranker: Ranker;
+  let items: RankableItem[];
+
+  beforeEach(() => {
+    items = [
+      {
+        id: "item1",
+        initialRating: 1500,
+        currentRating: 1500,
+        comparisons: 0,
+        wins: 0,
+        losses: 0,
+        ties: 0,
+        stable: false,
+        lastComparisonTime: null,
+      },
+      {
+        id: "item2",
+        initialRating: 1500,
+        currentRating: 1500,
+        comparisons: 0,
+        wins: 0,
+        losses: 0,
+        ties: 0,
+        stable: false,
+        lastComparisonTime: null,
+      },
+      {
+        id: "item3",
+        initialRating: 1500,
+        currentRating: 1500,
+        comparisons: 0,
+        wins: 0,
+        losses: 0,
+        ties: 0,
+        stable: false,
+        lastComparisonTime: null,
+      },
+      {
+        id: "item4",
+        initialRating: 1500,
+        currentRating: 1500,
+        comparisons: 0,
+        wins: 0,
+        losses: 0,
+        ties: 0,
+        stable: false,
+        lastComparisonTime: null,
+      },
+    ];
+
+    const config = {
+      kFactor: 32,
+      ratingChangeThreshold: 5,
+      stableComparisonsThreshold: 10,
+      minimumComparisons: 20,
+      defaultInitialRating: 1500,
+      minRating: 0,
+    };
+
+    ranker = new Ranker(items, config);
+  });
+
+  test("should return a pair of items for comparison", () => {
+    const comparison = ranker.getNextComparison();
+    expect(comparison).not.toBeNull();
+    expect(comparison).toHaveLength(2);
+    expect(comparison![0]).not.toBe(comparison![1]);
+  });
+
+  test("should prioritize items with fewer comparisons", () => {
+    // Simulate some comparisons for item1
+    for (let i = 0; i < 5; i++) {
+      ranker.addComparisonResult({
+        itemId1: "item1",
+        itemId2: "item2",
+        result: "win",
+        timestamp: Date.now(),
+      });
+    }
+
+    const comparison = ranker.getNextComparison();
+    expect(comparison).not.toBeNull();
+    expect(comparison![0]).not.toBe("item1");
+  });
+
+  test("should consider rating differences", () => {
+    // Set up items with different ratings
+    ranker.addComparisonResult({
+      itemId1: "item1",
+      itemId2: "item2",
+      result: "win",
+      timestamp: Date.now(),
+    });
+
+    const comparison = ranker.getNextComparison();
+    expect(comparison).not.toBeNull();
+    expect(comparison).toContain("item3");
+    expect(comparison).toContain("item4");
+  });
+
+  test("should consider time since last comparison", () => {
+    // Simulate a comparison for item1 and item2 a week ago
+    const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    ranker.addComparisonResult({
+      itemId1: "item1",
+      itemId2: "item2",
+      result: "win",
+      timestamp: oneWeekAgo,
+    });
+
+    // Simulate a recent comparison for item3 and item4
+    ranker.addComparisonResult({
+      itemId1: "item3",
+      itemId2: "item4",
+      result: "win",
+      timestamp: Date.now(),
+    });
+
+    const comparison = ranker.getNextComparison();
+    expect(comparison).not.toBeNull();
+    expect(comparison).toContain("item1");
+    expect(comparison).toContain("item2");
+  });
+
+  test("should prefer unstable items", () => {
+    // Make item1 stable
+    for (let i = 0; i < 10; i++) {
+      ranker.addComparisonResult({
+        itemId1: "item1",
+        itemId2: "item2",
+        result: "win",
+        timestamp: Date.now(),
+      });
+    }
+
+    const comparison = ranker.getNextComparison();
+    expect(comparison).not.toBeNull();
+    expect(comparison).not.toContain("item1");
+  });
+
+  test("should return null when all items have reached minimum comparisons", () => {
+    // Simulate minimum comparisons for all items
+    for (let i = 0; i < 20; i++) {
+      ranker.addComparisonResult({
+        itemId1: "item1",
+        itemId2: "item2",
+        result: "win",
+        timestamp: Date.now(),
+      });
+      ranker.addComparisonResult({
+        itemId1: "item3",
+        itemId2: "item4",
+        result: "win",
+        timestamp: Date.now(),
+      });
+    }
+
+    const comparison = ranker.getNextComparison();
+    expect(comparison).toBeNull();
   });
 });
