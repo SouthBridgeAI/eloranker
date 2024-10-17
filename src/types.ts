@@ -7,12 +7,10 @@ export type ComparisonResult = {
 };
 
 export type RankerConfig = {
-  kFactor?: number;
-  ratingChangeThreshold?: number;
-  stableComparisonsThreshold?: number;
-  minimumComparisons?: number;
-  defaultInitialRating?: number;
-  minRating?: number;
+  kFactor: number;
+  minimumComparisons: number;
+  defaultInitialRating: number;
+  minRating: number;
 };
 
 export type RankableItem = {
@@ -23,6 +21,11 @@ export type RankableItem = {
   wins: number;
   losses: number;
   ties: number;
-  stable: boolean;
   lastComparisonTime: number | null;
+  ratingHistory: Array<{ rating: number; timestamp: number }>;
+};
+
+export type ProgressParams = {
+  ratingChangeThreshold: number;
+  stableComparisonsThreshold: number;
 };

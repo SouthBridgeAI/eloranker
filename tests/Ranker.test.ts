@@ -1,7 +1,12 @@
 // eloRanker.test.ts
 
 import { Ranker } from "../src/ranker";
-import { RankableItem, ComparisonResult } from "../src/types";
+import { RankableItem, ComparisonResult, ProgressParams } from "../src/types";
+
+const progressParams: ProgressParams = {
+  ratingChangeThreshold: 5,
+  stableComparisonsThreshold: 10,
+};
 
 describe("EloRanker Class Tests", () => {
   let ranker: Ranker;
@@ -17,8 +22,8 @@ describe("EloRanker Class Tests", () => {
         wins: 0,
         losses: 0,
         ties: 0,
-        stable: false,
         lastComparisonTime: null,
+        ratingHistory: [],
       },
       {
         id: "item2",
@@ -28,8 +33,8 @@ describe("EloRanker Class Tests", () => {
         wins: 0,
         losses: 0,
         ties: 0,
-        stable: false,
         lastComparisonTime: null,
+        ratingHistory: [],
       },
       {
         id: "item3",
@@ -39,7 +44,7 @@ describe("EloRanker Class Tests", () => {
         wins: 0,
         losses: 0,
         ties: 0,
-        stable: false,
+        ratingHistory: [],
         lastComparisonTime: null,
       },
       {
@@ -50,15 +55,13 @@ describe("EloRanker Class Tests", () => {
         wins: 0,
         losses: 0,
         ties: 0,
-        stable: false,
+        ratingHistory: [],
         lastComparisonTime: null,
       },
     ];
 
     const config = {
       kFactor: 32,
-      ratingChangeThreshold: 5,
-      stableComparisonsThreshold: 10,
       minimumComparisons: 20,
       defaultInitialRating: 1500,
       minRating: 0,
@@ -288,28 +291,8 @@ describe("EloRanker Class Tests", () => {
     expect(item1.currentRating).toBeGreaterThanOrEqual(0);
   });
 
-  test("should correctly identify stable items", () => {
-    // Simulate comparisons to reach stability
-    const result: ComparisonResult = {
-      itemId1: "item1",
-      itemId2: "item2",
-      result: "win",
-      timestamp: Date.now(),
-    };
-
-    for (let i = 0; i < 25; i++) {
-      ranker.addComparisonResult(result);
-    }
-
-    const item1 = ranker.getItemStats("item1");
-    expect(item1.stable).toBe(true);
-
-    const item2 = ranker.getItemStats("item2");
-    expect(item2.stable).toBe(true);
-  });
-
   test("should return correct progress", () => {
-    expect(ranker.getProgress()).toBe(0);
+    expect(ranker.getProgress(progressParams)).toBe(0);
 
     // Simulate comparisons to stabilize some items
     const result: ComparisonResult = {
@@ -323,7 +306,7 @@ describe("EloRanker Class Tests", () => {
       ranker.addComparisonResult(result);
     }
 
-    expect(ranker.getProgress()).toBe(0.5);
+    expect(ranker.getProgress(progressParams)).toBe(0.5);
   });
 
   test("should return null when no comparisons are needed", () => {
@@ -386,37 +369,6 @@ describe("EloRanker Class Tests", () => {
     expect(() => ranker.addComparisonResult(result)).toThrowError(
       "One or both items not found"
     );
-  });
-
-  test("should correctly reset stability when new comparisons affect stable items", () => {
-    // Stabilize item1 and item2
-    const result: ComparisonResult = {
-      itemId1: "item1",
-      itemId2: "item2",
-      result: "win",
-      timestamp: Date.now(),
-    };
-
-    for (let i = 0; i < 25; i++) {
-      ranker.addComparisonResult(result);
-    }
-
-    const item1 = ranker.getItemStats("item1");
-    expect(item1.stable).toBe(true);
-
-    // Introduce a new result that causes a significant rating change
-    const significantResult: ComparisonResult = {
-      itemId1: "item1",
-      itemId2: "item3",
-      result: "loss",
-      timestamp: Date.now(),
-    };
-
-    ranker.addComparisonResult(significantResult);
-
-    // Since the implementation marks items as stable permanently, item1 remains stable
-    // If the design intended for stability to be re-evaluated, additional logic would be required
-    expect(ranker.getItemStats("item1").stable).toBe(true);
   });
 
   test("should maintain sorted rankings after each comparison", () => {
@@ -485,7 +437,7 @@ describe("EloRanker Class Tests", () => {
 
   test("should correctly calculate progress when there are no items", () => {
     const emptyRanker = new Ranker([], {});
-    expect(emptyRanker.getProgress()).toBe(1);
+    expect(emptyRanker.getProgress(progressParams)).toBe(1);
   });
 
   test("should maintain correct order of items with equal ratings", () => {
@@ -583,7 +535,7 @@ describe("getNextComparison Tests", () => {
         wins: 0,
         losses: 0,
         ties: 0,
-        stable: false,
+        ratingHistory: [],
         lastComparisonTime: null,
       },
       {
@@ -594,7 +546,7 @@ describe("getNextComparison Tests", () => {
         wins: 0,
         losses: 0,
         ties: 0,
-        stable: false,
+        ratingHistory: [],
         lastComparisonTime: null,
       },
       {
@@ -605,7 +557,7 @@ describe("getNextComparison Tests", () => {
         wins: 0,
         losses: 0,
         ties: 0,
-        stable: false,
+        ratingHistory: [],
         lastComparisonTime: null,
       },
       {
@@ -616,7 +568,7 @@ describe("getNextComparison Tests", () => {
         wins: 0,
         losses: 0,
         ties: 0,
-        stable: false,
+        ratingHistory: [],
         lastComparisonTime: null,
       },
     ];
@@ -730,5 +682,52 @@ describe("getNextComparison Tests", () => {
 
     const comparison = ranker.getNextComparison();
     expect(comparison).toBeNull();
+  });
+
+  test("should handle extreme rating differences gracefully", () => {
+    ranker.addItem("highRatedItem", 3000);
+    ranker.addItem("lowRatedItem", 100);
+
+    ranker.addComparisonResult({
+      itemId1: "highRatedItem",
+      itemId2: "lowRatedItem",
+      result: "loss",
+      timestamp: Date.now(),
+    });
+
+    const highRatedItem = ranker.getItemStats("highRatedItem");
+    const lowRatedItem = ranker.getItemStats("lowRatedItem");
+
+    expect(highRatedItem.currentRating).toBeLessThan(3000);
+    expect(lowRatedItem.currentRating).toBeGreaterThan(100);
+    expect(highRatedItem.currentRating).toBeGreaterThan(
+      lowRatedItem.currentRating
+    );
+  });
+
+  test("should maintain consistent rankings over many comparisons", () => {
+    const iterations = 1000;
+    const items = ["item1", "item2", "item3", "item4"];
+
+    for (let i = 0; i < iterations; i++) {
+      const item1 = items[Math.floor(Math.random() * items.length)];
+      const item2 = items[Math.floor(Math.random() * items.length)];
+      if (item1 !== item2) {
+        ranker.addComparisonResult({
+          itemId1: item1,
+          itemId2: item2,
+          result: Math.random() < 0.5 ? "win" : "loss",
+          timestamp: Date.now(),
+        });
+      }
+    }
+
+    const rankings = ranker.getRankings();
+    expect(rankings.length).toBe(items.length);
+    for (let i = 0; i < rankings.length - 1; i++) {
+      expect(rankings[i].currentRating).toBeGreaterThanOrEqual(
+        rankings[i + 1].currentRating
+      );
+    }
   });
 });
