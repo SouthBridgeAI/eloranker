@@ -47,7 +47,7 @@ export class Ranker {
     this.items.delete(id);
   }
 
-  addComparisonResult(result: ComparisonResult): void {
+  addComparisonResult(result: ComparisonResult): number {
     const item1 = this.items.get(result.itemId1);
     const item2 = this.items.get(result.itemId2);
 
@@ -99,6 +99,10 @@ export class Ranker {
       expectedScore2
     );
 
+    const ratingDelta =
+      Math.abs(newRating1 - item1.currentRating) +
+      Math.abs(newRating2 - item2.currentRating);
+
     item1.currentRating = Math.max(newRating1, this.config.minRating);
     item2.currentRating = Math.max(newRating2, this.config.minRating);
 
@@ -116,6 +120,8 @@ export class Ranker {
       rating: item2.currentRating,
       timestamp: result.timestamp,
     });
+
+    return ratingDelta;
   }
 
   getNextComparison(): [string, string] | null {

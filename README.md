@@ -1,15 +1,39 @@
 # Ranker
 
-A flexible and efficient TypeScript library for ranking items based on pairwise comparisons using an Elo-like rating system.
+A robust and flexible TypeScript library for ranking items based on pairwise comparisons using an advanced Elo-like rating system.
+
+## Table of Contents
+
+- [Ranker](#ranker)
+  - [Table of Contents](#table-of-contents)
+  - [Features](#features)
+  - [Installation](#installation)
+  - [Quick Start](#quick-start)
+  - [Configuration](#configuration)
+    - [RankerConfig](#rankerconfig)
+    - [Effects of Parameters](#effects-of-parameters)
+    - [Progress Tracking](#progress-tracking)
+      - [ProgressParams](#progressparams)
+  - [API Reference](#api-reference)
+    - [Ranker Class](#ranker-class)
+      - [Constructor](#constructor)
+      - [Methods](#methods)
+    - [Types](#types)
+  - [Advanced Usage](#advanced-usage)
+    - [Batch Processing](#batch-processing)
+    - [Rating Delta Analysis](#rating-delta-analysis)
+  - [Mathematical Foundation](#mathematical-foundation)
+  - [Contributing](#contributing)
 
 ## Features
 
-- Easy-to-use API for managing rankable items and their comparisons
-- Configurable ranking parameters
-- Automatic calculation of next best comparison
-- Progress tracking for ranking stability
-- Comprehensive item statistics and history
-- TypeScript support with full type definitions
+- 🚀 Easy-to-use API for managing rankable items and their comparisons
+- ⚙️ Highly configurable ranking parameters
+- 🧠 Intelligent calculation of optimal next comparison
+- 📊 Comprehensive progress tracking for ranking stability
+- 📈 Detailed item statistics and historical data
+- 🔧 Full TypeScript support with type definitions
+- 🧮 Transparent mathematical model with customizable parameters
 
 ## Installation
 
@@ -27,18 +51,19 @@ yarn add ranker
 
 ## Quick Start
 
-Here's a basic example to get you started with Ranker:
+Get up and running with Ranker in just a few lines of code:
 
 ```typescript
 import { Ranker, RankableItem, ComparisonResult } from "ranker";
 
-// Initialize Ranker with some items
+// Initialize items
 const initialItems: RankableItem[] = [
   { id: "item1", initialRating: 1500 },
   { id: "item2", initialRating: 1500 },
   { id: "item3", initialRating: 1500 },
 ];
 
+// Create a new Ranker instance
 const ranker = new Ranker(initialItems, { kFactor: 32 });
 
 // Add a comparison result
@@ -49,71 +74,48 @@ const result: ComparisonResult = {
   timestamp: Date.now(),
 };
 
-ranker.addComparisonResult(result);
+const ratingDelta = ranker.addComparisonResult(result);
+console.log(`Rating change: ${ratingDelta}`);
 
 // Get current rankings
 const rankings = ranker.getRankings();
 console.log("Current rankings:", rankings);
 ```
 
-## Usage Guide
+## Configuration
 
-### Initializing the Ranker
+Customize Ranker's behavior with the following configuration options:
 
-Create a new Ranker instance with initial items and optional configuration:
+### RankerConfig
+
+| Parameter              | Type   | Default | Description                                                     |
+| ---------------------- | ------ | ------- | --------------------------------------------------------------- |
+| `kFactor`              | number | 32      | Determines the maximum rating change per comparison             |
+| `minimumComparisons`   | number | 20      | Minimum comparisons before considering an item's ranking stable |
+| `defaultInitialRating` | number | 1500    | Starting rating for new items                                   |
+| `minRating`            | number | 0       | Minimum possible rating for any item                            |
+
+Example configuration:
 
 ```typescript
 const ranker = new Ranker(initialItems, {
-  kFactor: 32,
-  minimumComparisons: 20,
-  defaultInitialRating: 1500,
-  minRating: 0,
+  kFactor: 24,
+  minimumComparisons: 30,
+  defaultInitialRating: 1600,
+  minRating: 100,
 });
 ```
 
-### Adding and Removing Items
+### Effects of Parameters
 
-```typescript
-ranker.addItem("newItem", 1400); // Add with custom initial rating
-ranker.addItem("anotherItem"); // Add with default initial rating
-ranker.removeItem("itemToRemove");
-```
+- **kFactor**: Higher values make the system more responsive but potentially volatile. Lower values provide more stability but slower adaptation.
+- **minimumComparisons**: Increasing this value requires more data for stability, potentially increasing accuracy but increasing number of comparisons.
+- **defaultInitialRating**: Adjust based on prior knowledge about the general strength of new items.
+- **minRating**: Prevents extremely low ratings, which may be desirable in some applications.
 
-### Adding Comparison Results
+### Progress Tracking
 
-```typescript
-const result: ComparisonResult = {
-  itemId1: "item1",
-  itemId2: "item2",
-  result: "win", // "win", "loss", or "tie"
-  timestamp: Date.now(),
-};
-ranker.addComparisonResult(result);
-```
-
-### Getting Next Comparison
-
-```typescript
-const nextComparison = ranker.getNextComparison();
-if (nextComparison) {
-  const [itemId1, itemId2] = nextComparison;
-  console.log(`Next comparison: ${itemId1} vs ${itemId2}`);
-} else {
-  console.log("No more comparisons needed");
-}
-```
-
-### Retrieving Rankings and Item Stats
-
-```typescript
-const rankings = ranker.getRankings();
-console.log("Current rankings:", rankings);
-
-const itemStats = ranker.getItemStats("item1");
-console.log("Stats for item1:", itemStats);
-```
-
-### Tracking Progress
+Monitor ranking stability with the `getProgress` method:
 
 ```typescript
 const progress = ranker.getProgress({
@@ -123,9 +125,19 @@ const progress = ranker.getProgress({
 console.log(`Ranking progress: ${progress * 100}%`);
 ```
 
+#### ProgressParams
+
+| Parameter                    | Type   | Description                                 |
+| ---------------------------- | ------ | ------------------------------------------- |
+| `ratingChangeThreshold`      | number | Maximum allowed rating change for stability |
+| `stableComparisonsThreshold` | number | Number of recent comparisons to check       |
+
+- Lower `ratingChangeThreshold` increases accuracy but slows stabilization.
+- Higher `stableComparisonsThreshold` increases confidence but takes longer to achieve.
+
 ## API Reference
 
-### `Ranker`
+### Ranker Class
 
 #### Constructor
 
@@ -135,20 +147,20 @@ constructor(initialItems: RankableItem[], config: Partial<RankerConfig>)
 
 #### Methods
 
-- `addItem(id: string, initialRating?: number): void`
-- `removeItem(id: string): void`
-- `addComparisonResult(result: ComparisonResult): void`
-- `getNextComparison(): [string, string] | null`
-- `getItemStats(id: string): RankableItem`
-- `getRankings(): RankableItem[]`
-- `getItemCount(): number`
-- `getAllItems(): RankableItem[]`
-- `getProgress(params: ProgressParams): number`
-- `getItemHistory(id: string): Array<{ rating: number; timestamp: number }>`
+| Method                                          | Description                                    | Return Type                                    |
+| ----------------------------------------------- | ---------------------------------------------- | ---------------------------------------------- |
+| `addItem(id: string, initialRating?: number)`   | Add a new item to the ranking system           | `void`                                         |
+| `removeItem(id: string)`                        | Remove an item from the ranking system         | `void`                                         |
+| `addComparisonResult(result: ComparisonResult)` | Add a new comparison result                    | `number` (rating delta)                        |
+| `getNextComparison()`                           | Get the optimal next comparison                | `[string, string] \| null`                     |
+| `getItemStats(id: string)`                      | Get statistics for a specific item             | `RankableItem`                                 |
+| `getRankings()`                                 | Get current rankings of all items              | `RankableItem[]`                               |
+| `getItemCount()`                                | Get the total number of items                  | `number`                                       |
+| `getAllItems()`                                 | Get all items in the system                    | `RankableItem[]`                               |
+| `getProgress(params: ProgressParams)`           | Get the current progress/stability of rankings | `number`                                       |
+| `getItemHistory(id: string)`                    | Get rating history for an item                 | `Array<{ rating: number; timestamp: number }>` |
 
 ### Types
-
-#### `RankableItem`
 
 ```typescript
 type RankableItem = {
@@ -162,11 +174,7 @@ type RankableItem = {
   lastComparisonTime: number | null;
   ratingHistory: Array<{ rating: number; timestamp: number }>;
 };
-```
 
-#### `ComparisonResult`
-
-```typescript
 type ComparisonResult = {
   itemId1: string;
   itemId2: string;
@@ -174,22 +182,14 @@ type ComparisonResult = {
   timestamp: number;
   metadata?: any;
 };
-```
 
-#### `RankerConfig`
-
-```typescript
 type RankerConfig = {
   kFactor: number;
   minimumComparisons: number;
   defaultInitialRating: number;
   minRating: number;
 };
-```
 
-#### `ProgressParams`
-
-```typescript
 type ProgressParams = {
   ratingChangeThreshold: number;
   stableComparisonsThreshold: number;
@@ -198,31 +198,9 @@ type ProgressParams = {
 
 ## Advanced Usage
 
-### Custom Configuration
+### Batch Processing
 
-Customize the Ranker's behavior by passing a configuration object:
-
-```typescript
-const ranker = new Ranker(initialItems, {
-  kFactor: 24,
-  minimumComparisons: 30,
-  defaultInitialRating: 1600,
-  minRating: 100,
-});
-```
-
-### Tracking Item History
-
-Retrieve the rating history for a specific item:
-
-```typescript
-const history = ranker.getItemHistory("item1");
-console.log("Rating history for item1:", history);
-```
-
-### Handling Large Numbers of Items
-
-For systems with many items, you can implement batched processing:
+For systems with many items, implement batched processing:
 
 ```typescript
 const allItems = ranker.getAllItems();
@@ -234,18 +212,66 @@ for (let i = 0; i < allItems.length; i += batchSize) {
 }
 ```
 
-## Best Practices
+### Rating Delta Analysis
 
-1. **Regular Comparisons**: Ensure all items are compared regularly to maintain accurate rankings.
-2. **Balanced Comparisons**: Try to balance the number of comparisons across all items.
-3. **Monitor Progress**: Use the `getProgress` method to track the stability of your rankings.
-4. **Handle Ties**: Don't forget to use the "tie" result when appropriate to ensure accurate ratings.
-5. **Metadata Usage**: Utilize the `metadata` field in `ComparisonResult` to store additional information about each comparison.
+Use the rating delta to trigger events or updates:
+
+```typescript
+const SIGNIFICANT_CHANGE_THRESHOLD = 50;
+
+const ratingDelta = ranker.addComparisonResult(result);
+if (ratingDelta > SIGNIFICANT_CHANGE_THRESHOLD) {
+  console.log("Significant ranking change detected!");
+  // Trigger updates, notifications, etc.
+}
+```
+
+## Mathematical Foundation
+
+Ranker uses an advanced Elo-like rating system. Here are the key equations:
+
+1. **Expected Score Calculation**:
+
+   The expected score for player A when competing against player B is:
+
+   $E(A) = \frac{1}{1 + 10^{(R_B - R_A) / 400}}$
+
+   Where $R_A$ and $R_B$ are the current ratings of players A and B.
+
+2. **Rating Update**:
+
+   After a comparison, ratings are updated using:
+
+   $R_{new} = R_{old} + K \cdot (S - E)$
+
+   Where:
+
+   - $R_{new}$ is the new rating
+   - $R_{old}$ is the old rating
+   - $K$ is the k-factor (configurable)
+   - $S$ is the actual score (1 for win, 0.5 for tie, 0 for loss)
+   - $E$ is the expected score from step 1
+
+3. **Rating Delta**:
+
+   The rating delta returned by `addComparisonResult` is:
+
+   $\Delta = |R_{new_A} - R_{old_A}| + |R_{new_B} - R_{old_B}|$
+
+   This represents the total change in ratings for both items.
+
+These equations ensure:
+
+- Winning against a higher-rated opponent yields a larger rating increase.
+- Losing against a lower-rated opponent results in a larger rating decrease.
+- The k-factor controls the maximum possible change from a single comparison.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+We welcome contributions to Ranker! Here's how you can help:
 
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
