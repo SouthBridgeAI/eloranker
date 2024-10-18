@@ -54,7 +54,7 @@ yarn add ranker
 Get up and running with Ranker in just a few lines of code:
 
 ```typescript
-import { Ranker, RankableItem, ComparisonResult } from "ranker";
+import { Ranker, RankableItem, ComparisonResult } from "eloranker";
 
 // Initialize items
 const initialItems: RankableItem[] = [
