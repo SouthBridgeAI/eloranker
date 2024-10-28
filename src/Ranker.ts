@@ -1,13 +1,46 @@
-import {
-  RankableItem,
-  ComparisonResult,
-  RankerConfig,
-  ProgressParams,
-} from "./types";
+interface RankableItem {
+  id: string;
+  initialRating: number;
+  currentRating: number;
+  comparisons: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  lastComparisonTime: number | null;
+  ratingHistory: Array<{ rating: number; timestamp: number }>;
+}
+
+interface ComparisonResult {
+  itemId1: string;
+  itemId2: string;
+  result: "win" | "loss" | "tie";
+  timestamp: number;
+}
+
+interface ComparisonHistory {
+  itemId1: string;
+  itemId2: string;
+  timestamp: number;
+}
+
+interface RankerConfig {
+  kFactor: number;
+  minimumComparisons: number;
+  defaultInitialRating: number;
+  minRating: number;
+  ratingGroups: number;
+}
+
+interface ProgressParams {
+  ratingChangeThreshold: number;
+  stableComparisonsThreshold: number;
+}
 
 export class Ranker {
   private items: Map<string, RankableItem>;
   private config: RankerConfig;
+  private comparisonHistory: ComparisonHistory[] = [];
+  private lastRatingGroup: number | null = null;
 
   constructor(initialItems: RankableItem[], config: Partial<RankerConfig>) {
     this.items = new Map();
@@ -16,6 +49,7 @@ export class Ranker {
       minimumComparisons: config.minimumComparisons ?? 20,
       defaultInitialRating: config.defaultInitialRating ?? 1500,
       minRating: config.minRating ?? 0,
+      ratingGroups: config.ratingGroups ?? 5,
     };
 
     initialItems.forEach((item) => this.addItem(item.id, item.initialRating));
@@ -26,7 +60,7 @@ export class Ranker {
       throw new Error(`Item with id ${id} already exists`);
     }
 
-    const rating = initialRating ?? this.config.defaultInitialRating ?? 1500;
+    const rating = initialRating ?? this.config.defaultInitialRating;
     this.items.set(id, {
       id,
       initialRating: rating,
@@ -45,6 +79,28 @@ export class Ranker {
       throw new Error(`Item with id ${id} not found`);
     }
     this.items.delete(id);
+  }
+
+  private getRatingGroup(rating: number): number {
+    const allRatings = Array.from(this.items.values()).map(
+      (item) => item.currentRating
+    );
+    const minRating = Math.min(...allRatings);
+    const maxRating = Math.max(...allRatings);
+    const groupSize = (maxRating - minRating) / this.config.ratingGroups;
+
+    return Math.min(
+      Math.floor((rating - minRating) / groupSize),
+      this.config.ratingGroups - 1
+    );
+  }
+
+  private getComparisonCount(itemId1: string, itemId2: string): number {
+    return this.comparisonHistory.filter(
+      (comp) =>
+        (comp.itemId1 === itemId1 && comp.itemId2 === itemId2) ||
+        (comp.itemId1 === itemId2 && comp.itemId2 === itemId1)
+    ).length;
   }
 
   addComparisonResult(result: ComparisonResult): number {
@@ -121,6 +177,13 @@ export class Ranker {
       timestamp: result.timestamp,
     });
 
+    // Add to comparison history
+    this.comparisonHistory.push({
+      itemId1: result.itemId1,
+      itemId2: result.itemId2,
+      timestamp: result.timestamp,
+    });
+
     return ratingDelta;
   }
 
@@ -129,46 +192,60 @@ export class Ranker {
     if (items.length < 2) return null;
 
     items.sort((a, b) => a.comparisons - b.comparisons);
-
     const leastComparedItem = items[0];
 
     if (leastComparedItem.comparisons >= this.config.minimumComparisons) {
       return null;
     }
 
-    const bestOpponent = this.findBestOpponent(leastComparedItem, items);
+    const currentGroup = this.getRatingGroup(leastComparedItem.currentRating);
+    const bestOpponent = this.findBestOpponentWithGrouping(
+      leastComparedItem,
+      items,
+      currentGroup
+    );
 
     return [leastComparedItem.id, bestOpponent.id];
   }
 
-  private findBestOpponent(
+  private findBestOpponentWithGrouping(
     item: RankableItem,
-    allItems: RankableItem[]
+    allItems: RankableItem[],
+    currentGroup: number
   ): RankableItem {
-    const potentialOpponents = allItems.filter(
-      (opponent) => opponent.id !== item.id
-    );
+    const potentialOpponents = allItems.filter((opponent) => {
+      if (opponent.id === item.id) return false;
+
+      const comparisonCount = this.getComparisonCount(item.id, opponent.id);
+      if (comparisonCount >= 1) return false;
+
+      return true;
+    });
 
     if (potentialOpponents.length === 0) {
       throw new Error("No potential opponents found");
     }
 
-    const scoredOpponents = potentialOpponents.map((opponent) => ({
+    const preferredOpponents = potentialOpponents.filter(
+      (opponent) =>
+        this.getRatingGroup(opponent.currentRating) !== this.lastRatingGroup
+    );
+
+    const opponentsToScore =
+      preferredOpponents.length > 0 ? preferredOpponents : potentialOpponents;
+
+    const scoredOpponents = opponentsToScore.map((opponent) => ({
       opponent,
       score: this.calculateOpponentScore(item, opponent),
     }));
 
     scoredOpponents.sort((a, b) => b.score - a.score);
 
-    return scoredOpponents[0].opponent;
-  }
+    this.lastRatingGroup = this.getRatingGroup(
+      scoredOpponents[0].opponent.currentRating
+    );
 
-  getItemHistory(id: string): Array<{ rating: number; timestamp: number }> {
-    const item = this.items.get(id);
-    if (!item) {
-      throw new Error(`Item with id ${id} not found`);
-    }
-    return [...item.ratingHistory];
+    return scoredOpponents[0].opponent;
   }
 
   private calculateOpponentScore(
@@ -182,11 +259,17 @@ export class Ranker {
       item.comparisons - opponent.comparisons
     );
 
+    const previousComparisons = this.getComparisonCount(item.id, opponent.id);
+    const comparisonPenalty = previousComparisons * 0.2;
+
     const ratingScore = 1 / (1 + ratingDifference / 400);
     const comparisonScore = 1 / (1 + comparisonDifference);
     const timeScore = this.getTimeScore(opponent);
 
-    return 0.4 * ratingScore + 0.4 * comparisonScore + 0.2 * timeScore;
+    return (
+      (0.4 * ratingScore + 0.4 * comparisonScore + 0.2 * timeScore) *
+      (1 - comparisonPenalty)
+    );
   }
 
   private getTimeScore(item: RankableItem): number {
@@ -208,6 +291,14 @@ export class Ranker {
     expectedScore: number
   ): number {
     return oldRating + this.config.kFactor * (actualScore - expectedScore);
+  }
+
+  getItemHistory(id: string): Array<{ rating: number; timestamp: number }> {
+    const item = this.items.get(id);
+    if (!item) {
+      throw new Error(`Item with id ${id} not found`);
+    }
+    return [...item.ratingHistory];
   }
 
   getItemStats(id: string): RankableItem {
@@ -255,5 +346,17 @@ export class Ranker {
     });
 
     return stableItems.length / this.items.size;
+  }
+
+  // New method to get comparison history for an item
+  getItemComparisonHistory(id: string): ComparisonHistory[] {
+    return this.comparisonHistory.filter(
+      (comp) => comp.itemId1 === id || comp.itemId2 === id
+    );
+  }
+
+  // New method to get total comparison history
+  getComparisonHistory(): ComparisonHistory[] {
+    return [...this.comparisonHistory];
   }
 }
